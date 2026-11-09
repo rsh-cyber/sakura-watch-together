@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>陪看状态</title>
+<style>
+  :root {
+    --bg: #1b1c21;
+    --panel: #262830;
+    --line: #3a3d48;
+    --text: #eceef3;
+    --muted: #9498a6;
+    --accent: #b9a7ff;
+    --ok: #63d49a;
+    --warn: #e7b45d;
+    --bad: #e77b7b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 14px 16px;
+    overflow: hidden;
+    user-select: none;
+  }
+  header { display: flex; align-items: center; gap: 8px; }
+  h1 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: .02em; }
+  #dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  #dot.on { background: var(--ok); box-shadow: 0 0 8px rgba(99,212,154,.55); }
+  #dot.warn { background: var(--warn); }
+  #dot.bad { background: var(--bad); }
+  #state { margin-left: auto; color: var(--muted); font-size: 12px; }
+  #title {
+    margin-top: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #sub { margin-top: 2px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar { height: 5px; background: #30323c; border-radius: 4px; margin: 12px 0 6px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7f6ee8, var(--accent)); border-radius: 4px; }
+  .time { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 12px; margin-top: 12px; }
+  .cell { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; min-width: 0; }
+  .label { color: var(--muted); font-size: 10px; letter-spacing: .04em; }
+  .value { margin-top: 2px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .wide { grid-column: 1 / -1; }
+  #switch { display: none; margin-top: 9px; padding: 7px 9px; border-radius: 8px; background: rgba(231,180,93,.10); border: 1px solid rgba(231,180,93,.35); color: #f0d19a; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  footer { margin-top: 9px; color: #6f7380; font-size: 10px; }
+</style>
+</head>
+<body>
+  <header>
+    <span id="dot"></span>
+    <h1>陪看状态</h1>
+    <span id="state">读取中…</span>
+  </header>
+
+  <div id="title">未连接</div>
+  <div id="sub">等待浏览器上报</div>
+  <div class="bar"><i id="fill"></i></div>
+  <div class="time"><span id="now">--:--</span><span id="dur">--:--</span></div>
+
+  <div class="grid">
+    <div class="cell"><div class="label">陪看</div><div class="value" id="session">未开始</div></div>
+    <div class="cell"><div class="label">下一段</div><div class="value" id="next">--</div></div>
+    <div class="cell"><div class="label">分镜</div><div class="value" id="frames">--</div></div>
+    <div class="cell"><div class="label">画面</div><div class="value" id="frame">--</div></div>
+    <div class="cell wide"><div class="label">浏览器</div><div class="value" id="bridge">--</div></div>
+    <div class="cell wide"><div class="label">语音识别</div><div class="value" id="asr">--</div></div>
+  </div>
+
+  <div id="switch"></div>
+  <footer>每秒刷新 · 关闭此窗口不会停止陪看</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const clock = (value) => {
+  const total = Math.max(0, Math.floor(Number(value) || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+};
+
+function setState(kind, text) {
+  $("dot").className = kind;
+  $("state").textContent = text;
+}
+
+function render(data) {
+  const position = data.position || {};
+  const session = data.session || {};
+  const settings = data.settings || {};
+  const frame = data.frame;
+  const connected = Boolean(data.connected);
+  const paused = Boolean(position.paused);
+  const active = Boolean(session.active);
+
+  if (!data.ok) {
+    setState("bad", "桥异常");
+  } else if (!connected) {
+    setState("warn", "浏览器未连接");
+  } else if (paused) {
+    setState("warn", "已暂停");
+  } else {
+    setState("on", "播放中");
+  }
+
+  $("title").textContent = session.title || position.title || "未命名视频";
+  $("sub").textContent = active
+    ? `第 ${Number(session.segment_index || 0) + 1} 段 · 首段 ${settings.interval_seconds || "--"} 秒`
+    : "陪看未开始 · 浏览器仍在待命";
+
+  const pos = Number(position.pos || 0);
+  const dur = Number(position.duration || position.dur || 0);
+  const ratio = dur > 0 ? Math.min(1, Math.max(0, pos / dur)) : 0;
+  $("fill").style.width = `${ratio * 100}%`;
+  $("now").textContent = clock(pos);
+  $("dur").textContent = dur > 0 ? clock(dur) : "--:--";
+
+  $("session").textContent = active
+    ? (paused ? "已暂停" : "进行中")
+    : "未开始";
+  $("next").textContent = active && session.next_in != null
+    ? `${Math.max(0, Math.round(Number(session.next_in)))} 秒`
+    : "--";
+  $("frames").textContent = settings.storyboard_frames
+    ? `${settings.storyboard_frames} 帧/段`
+    : "--";
+  $("frame").textContent = frame
+    ? `${clock(frame.pos)} · ${frame.age}s 前`
+    : "无";
+  $("bridge").textContent = data.extension_version
+    ? `扩展 ${data.extension_version} · ${data.frames_cached || 0} 帧缓存`
+    : `扩展未连接${data.server_error ? " · 端口异常" : ""}`;
+  const asr = data.asr || {};
+  const asrLanguage = asr.language === "ja" ? "日语" : "中文";
+  $("asr").textContent = asr.disabled
+    ? "ASR 未安装"
+    : (asr.available
+      ? `Whisper ${asrLanguage} · ${asr.worker ? "已加载" : "待命"}`
+      : "Whisper 模型不可用");
+
+  if (session.switched_from) {
+    $("switch").style.display = "block";
+    $("switch").textContent = session.switch_pending
+      ? `刚换视频：${session.switched_from} → ${session.title}`
+      : `本场换过视频：${session.switched_from} → ${session.title}`;
+  } else {
+    $("switch").style.display = "none";
+  }
+}
+
+async function tick() {
+  try {
+    const response = await fetch("/api/state", { cache: "no-store" });
+    render(await response.json());
+  } catch (error) {
+    setState("bad", "桥未连接");
+    $("state").textContent = "桥未连接";
+  }
+}
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
