@@ -31,7 +31,7 @@ ASR 增补组件包安装在已有的陪看插件目录中。首次使用可以�
 1. 下载上面的 Lite ZIP。
 2. 完全退出 Sakura，包括系统托盘中的后台进程。
 3. 解压 ZIP，找到包含 plugin.yaml 和 plugin.py 的 sakura.watch_together 文件夹。
-4. 把该文件夹放到以下位置。（从aip或者文件夹也可以装）
+4. 把该文件夹放到以下位置。（从zip或者文件夹也可以装）
 
 ```text
 <Sakura 安装目录>\plugins\user\sakura.watch_together
